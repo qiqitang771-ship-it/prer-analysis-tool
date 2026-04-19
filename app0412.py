@@ -120,11 +120,11 @@ def to_excel_bytes(results_dict):
                 c.alignment = Alignment(horizontal="center", vertical="center")
 
         # ===== 自动列宽 =====
-for col in ws.columns:
-    max_length = 0
-    col_letter = col[0].column_letter  # 列字母
+        for col in ws.columns:
+        max_length = 0
+        col_letter = col[0].column_letter  # 列字母
 
-    for cell in col:
+        for cell in col:
         try:
             if cell.value:
                 cell_len = len(str(cell.value))
@@ -134,13 +134,13 @@ for col in ws.columns:
             pass
 
     # 👉 核心：宽度计算（中文适配）
-    adjusted_width = max_length + 2
+        adjusted_width = max_length + 2
 
     # 可选：限制最大宽度（防止超长）
-    if adjusted_width > 50:
-        adjusted_width = 50
+        if adjusted_width > 50:
+           adjusted_width = 50
 
-    ws.column_dimensions[col_letter].width = adjusted_width
+        ws.column_dimensions[col_letter].width = adjusted_width
 
     # 3️⃣ 写回buffer
     output = BytesIO()

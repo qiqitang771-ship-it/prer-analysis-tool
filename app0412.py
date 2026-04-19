@@ -55,19 +55,20 @@ left, right = st.columns([1, 2])
 # =========================
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+from io import BytesIO
 
 def to_excel_bytes(results_dict):
 
     buffer = BytesIO()
 
-    # 1️⃣ 写入Excel
+    # ===== 写入Excel =====
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         for name, df in results_dict.items():
             df.to_excel(writer, sheet_name=str(name)[:31], index=False)
 
     buffer.seek(0)
 
-    # 2️⃣ 读取并处理（关键）
+    # ===== 读取Workbook =====
     wb = load_workbook(buffer)
 
     for sheet in wb.sheetnames:
@@ -76,10 +77,8 @@ def to_excel_bytes(results_dict):
         # ===== 纵向合并 =====
         for col in range(1, ws.max_column + 1):
             start = None
-
             for row in range(2, ws.max_row + 1):
                 val = ws.cell(row=row, column=col).value
-
                 if val == "合并计算":
                     if start is None:
                         start = row
@@ -88,19 +87,15 @@ def to_excel_bytes(results_dict):
                         ws.merge_cells(start_row=start, start_column=col,
                                        end_row=row-1, end_column=col)
                         start = None
-
             if start is not None:
                 ws.merge_cells(start_row=start, start_column=col,
                                end_row=ws.max_row, end_column=col)
 
         # ===== 横向合并 =====
         for row in range(2, ws.max_row + 1):
-
             start = None
-
             for col in range(1, ws.max_column + 1):
                 val = ws.cell(row=row, column=col).value
-
                 if val == "合并计算":
                     if start is None:
                         start = col
@@ -109,45 +104,39 @@ def to_excel_bytes(results_dict):
                         ws.merge_cells(start_row=row, start_column=start,
                                        end_row=row, end_column=col-1)
                         start = None
-
             if start is not None:
                 ws.merge_cells(start_row=row, start_column=start,
                                end_row=row, end_column=ws.max_column)
 
         # ===== 居中 =====
-        for row in ws.iter_rows():
-            for c in row:
-                c.alignment = Alignment(horizontal="center", vertical="center")
+        for row_cells in ws.iter_rows():
+            for cell in row_cells:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
 
         # ===== 自动列宽 =====
-        for col in ws.columns:
-        max_length = 0
-        col_letter = col[0].column_letter  # 列字母
+        for col_cells in ws.columns:
+            max_length = 0
+            col_letter = col_cells[0].column_letter
 
-        for cell in col:
-        try:
-            if cell.value:
-                cell_len = len(str(cell.value))
-                if cell_len > max_length:
-                    max_length = cell_len
-        except:
-            pass
+            for cell in col_cells:
+                if cell.value:
+                    length = len(str(cell.value))
+                    if length > max_length:
+                        max_length = length
 
-    # 👉 核心：宽度计算（中文适配）
-        adjusted_width = max_length + 2
+            adjusted_width = max_length + 2
+            if adjusted_width > 50:
+                adjusted_width = 50
 
-    # 可选：限制最大宽度（防止超长）
-        if adjusted_width > 50:
-           adjusted_width = 50
+            ws.column_dimensions[col_letter].width = adjusted_width
 
-        ws.column_dimensions[col_letter].width = adjusted_width
-
-    # 3️⃣ 写回buffer
+    # ===== 输出 =====
     output = BytesIO()
     wb.save(output)
     output.seek(0)
 
     return output
+
 
 
 # =========================

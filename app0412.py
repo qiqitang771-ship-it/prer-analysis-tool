@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from core import run
+from core import process_all
 
 st.set_page_config(page_title="PRER数据分析系统", layout="wide")
 

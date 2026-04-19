@@ -3,11 +3,10 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 import os
-from io import BytesIO
 
 
 # =========================
-# 数值清洗（完全不变）
+# 数值清洗
 # =========================
 def to_numeric_safe(df, cols):
     for c in cols:
@@ -25,7 +24,7 @@ def to_numeric_safe(df, cols):
 
 
 # =========================
-# 字段补齐（完全不变）
+# 字段补齐
 # =========================
 def ensure_columns(df, cols, fill="NA"):
     for c in cols:
@@ -35,7 +34,7 @@ def ensure_columns(df, cols, fill="NA"):
 
 
 # =========================
-# 数据读取（仅改：支持file-like对象）
+# 数据读取
 # =========================
 def load_data(eff_path, saf_path):
 
@@ -65,9 +64,8 @@ def load_data(eff_path, saf_path):
         "发生例数": "event"
     }
 
-    # ✔ 支持 Streamlit UploadedFile
-    df_eff = pd.read_excel(eff_path, engine="openpyxl")
-    df_saf = pd.read_excel(saf_path, engine="openpyxl")
+    df_eff = pd.read_excel(eff_path)
+    df_saf = pd.read_excel(saf_path)
 
     df_eff.columns = df_eff.columns.str.strip()
     df_saf.columns = df_saf.columns.str.strip()
@@ -85,7 +83,7 @@ def load_data(eff_path, saf_path):
 
 
 # =========================
-# 合并计算（完全不变）
+# 合并计算
 # =========================
 def pooled_continuous(df):
     df = df.dropna(subset=["n", "mean", "sd"])
@@ -120,7 +118,7 @@ def pooled_binary(df):
 
 
 # =========================
-# 有效性（完全不变）
+# 有效性
 # =========================
 def build_eff_table(sub):
 
@@ -202,7 +200,7 @@ def build_eff_table(sub):
 
 
 # =========================
-# 安全性（完全不变）
+# 安全性
 # =========================
 def build_safety_table(df, category):
 
@@ -234,7 +232,7 @@ def build_safety_table(df, category):
             "文献编号": "合并计算",
             "组别": "合并计算",
             "器械": "合并计算",
-            "安全性指标": f"{outcome}（合并）",
+            "安全性指标": f"{outcome}",
             "样本量": total_n,
             "发生例数": event_sum,
             "发生率": event_sum / total_n if total_n > 0 else 0
@@ -246,7 +244,7 @@ def build_safety_table(df, category):
         "文献编号": "合并计算",
         "组别": "合并计算",
         "器械": "合并计算",
-        "安全性指标": f"{category}总体（合并）",
+        "安全性指标": f"总{category}",
         "样本量": total_n,
         "发生例数": total_event,
         "发生率": total_event / total_n if total_n > 0 else 0
@@ -258,11 +256,86 @@ def build_safety_table(df, category):
 
 
 # =========================
-# ⭐ Web调用入口（新增，不改逻辑）
+# ⭐ Excel输出（升级版：全方向合并“合并计算”）
 # =========================
-def process_all(eff_file, saf_file):
+def export_excel(results, path):
 
-    df_eff, df_saf = load_data(eff_file, saf_file)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except:
+            print("请关闭Excel文件")
+            return
+
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        for name, table in results.items():
+            table.to_excel(writer, sheet_name=str(name)[:31], index=False)
+
+    wb = load_workbook(path)
+
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+
+        # =========================
+        # ⭐ 核心：横向 + 纵向全部合并
+        # =========================
+
+        # ---- 纵向合并 ----
+        for col in range(1, ws.max_column + 1):
+            start = None
+
+            for row in range(2, ws.max_row + 1):
+                val = ws.cell(row=row, column=col).value
+
+                if val == "合并计算":
+                    if start is None:
+                        start = row
+                else:
+                    if start is not None:
+                        ws.merge_cells(start_row=start, start_column=col,
+                                       end_row=row-1, end_column=col)
+                        start = None
+
+            if start is not None:
+                ws.merge_cells(start_row=start, start_column=col,
+                               end_row=ws.max_row, end_column=col)
+
+        # ---- 横向合并 ----
+        for row in range(2, ws.max_row + 1):
+
+            start = None
+
+            for col in range(1, ws.max_column + 1):
+                val = ws.cell(row=row, column=col).value
+
+                if val == "合并计算":
+                    if start is None:
+                        start = col
+                else:
+                    if start is not None:
+                        ws.merge_cells(start_row=row, start_column=start,
+                                       end_row=row, end_column=col-1)
+                        start = None
+
+            if start is not None:
+                ws.merge_cells(start_row=row, start_column=start,
+                               end_row=row, end_column=ws.max_column)
+
+        # ---- 居中 ----
+        for row in ws.iter_rows():
+            for c in row:
+                c.alignment = Alignment(horizontal="center", vertical="center")
+
+    wb.save(path)
+    print(f"✔ 输出完成：{path}")
+
+
+# =========================
+# web调用
+# =========================
+def run(eff_path, saf_path, out_eff, out_saf):
+
+    df_eff, df_saf = load_data(eff_path, saf_path)
 
     eff_results = {}
     for outcome in df_eff["outcome"].dropna().unique():
@@ -272,4 +345,5 @@ def process_all(eff_file, saf_file):
     for category in df_saf["category"].dropna().unique():
         saf_results[category] = build_safety_table(df_saf, category)
 
-    return eff_results, saf_results
+    export_excel(eff_results, out_eff)
+    export_excel(saf_results, out_saf)

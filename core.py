@@ -347,3 +347,58 @@ def run(eff_path, saf_path, out_eff, out_saf):
 
     export_excel(eff_results, out_eff)
     export_excel(saf_results, out_saf)
+
+def process_all(eff_file, saf_file):
+
+    df_eff = pd.read_excel(eff_file)
+    df_saf = pd.read_excel(saf_file)
+
+    df_eff.columns = df_eff.columns.str.strip()
+    df_saf.columns = df_saf.columns.str.strip()
+
+    # ======= 复用你原逻辑 =======
+    eff_map = {
+        "文献编号": "doc_id",
+        "组别": "group",
+        "有效性指标": "outcome",
+        "访视点": "timepoint",
+        "器械": "device",
+        "数据类型": "type",
+        "样本量": "n",
+        "均值": "mean",
+        "标准差": "sd",
+        "组内P值": "p_in",
+        "组间P值": "p_between",
+        "发生例数": "event"
+    }
+
+    saf_map = {
+        "文献编号": "doc_id",
+        "组别": "group",
+        "器械": "device",
+        "安全性指标分类": "category",
+        "安全性指标": "outcome",
+        "数据类型": "type",
+        "样本量": "n",
+        "发生例数": "event"
+    }
+
+    df_eff = df_eff.rename(columns=eff_map)
+    df_saf = df_saf.rename(columns=saf_map)
+
+    df_eff = ensure_columns(df_eff, ["group", "device", "timepoint"])
+    df_saf = ensure_columns(df_saf, ["group", "device", "category"])
+
+    df_eff = to_numeric_safe(df_eff, ["n", "mean", "sd", "event"])
+    df_saf = to_numeric_safe(df_saf, ["n", "event"])
+
+    # ======= 构建结果 =======
+    eff_results = {}
+    for outcome in df_eff["outcome"].dropna().unique():
+        eff_results[outcome] = build_eff_table(df_eff[df_eff["outcome"] == outcome])
+
+    saf_results = {}
+    for category in df_saf["category"].dropna().unique():
+        saf_results[category] = build_safety_table(df_saf, category)
+
+    return eff_results, saf_results
